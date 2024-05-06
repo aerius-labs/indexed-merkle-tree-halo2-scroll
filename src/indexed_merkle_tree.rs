@@ -6,6 +6,7 @@ use halo2_proofs::{
 
 use crate::utils::assign_private_input;
 
+#[derive(Debug, Clone, Default, Copy)]
 pub struct IndexedMerkleTreeLeaf<F: PrimeField> {
     val: F,
     next_val: F,
@@ -57,5 +58,30 @@ impl<F: PrimeField> IndexedMerkleTreeLeaf<F> {
     }
     pub fn next_idx(&self) -> F {
         self.next_idx
+    }
+}
+pub struct IndexedMerkleTreeLeafAssigned<F: PrimeField> {
+    pub val: AssignedCell<F, F>,
+    pub next_val: AssignedCell<F, F>,
+    pub next_idx: AssignedCell<F, F>,
+}
+impl<F: PrimeField> IndexedMerkleTreeLeafAssigned<F> {
+    pub fn new(
+        val: AssignedCell<F, F>,
+        next_val: AssignedCell<F, F>,
+        next_idx: AssignedCell<F, F>,
+    ) -> Self {
+        Self {
+            val,
+            next_val,
+            next_idx,
+        }
+    }
+    pub fn from_vec(cells: Vec<AssignedCell<F, F>>) -> Self {
+        Self {
+            val: cells[0].clone(),
+            next_val: cells[1].clone(),
+            next_idx: cells[2].clone(),
+        }
     }
 }
