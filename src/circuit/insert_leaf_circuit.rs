@@ -139,3 +139,6 @@ impl<F: PrimeField> Circuit<F> for InsertLeafCircuit<F> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test {}

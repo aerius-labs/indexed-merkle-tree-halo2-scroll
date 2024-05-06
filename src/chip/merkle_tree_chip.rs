@@ -5,8 +5,7 @@ use halo2_proofs::{
 };
 use halo2curves::group::ff::PrimeField;
 
-use crate::utils::{MySpec, PoseidonChip, PoseidonConfig};
-
+use utils::{PoseidonChip, PoseidonConfig};
 const WIDTH: usize = 3;
 const RATE: usize = 2;
 const L: usize = 2;
