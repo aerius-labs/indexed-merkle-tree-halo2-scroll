@@ -1,8 +1,8 @@
 use halo2_proofs::{
-    circuit::{SimpleFloorPlanner, Value},
-    plonk::{Circuit, Error},
+    circuit::{SimpleFloorPlanner, Value}, plonk::{Circuit, Error}
 };
-use halo2curves::group::ff::PrimeField;
+use poseidon_circuit::Bn256Fr as Fr;
+
 
 use crate::{
     chip::{
@@ -18,22 +18,23 @@ use super::merkle_tree_circuit::MerkleTreeCircuit;
 //TODO: Calculate the root of the assigned idx leafs
 
 #[derive(Default, Debug, Clone)]
-pub struct InsertLeafCircuit<F: PrimeField> {
-    pub idx_low_leaf: IndexedMerkleTreeLeaf<F>,
-    pub low_leaf: MerkleTreeCircuit<F>,
-    pub new_leaf: MerkleTreeCircuit<F>,
-    pub new_leaf_val: Value<F>,
-    pub new_leaf_idx: Value<F>,
+pub struct InsertLeafCircuit {
+    pub idx_low_leaf: IndexedMerkleTreeLeaf,
+    pub low_leaf: MerkleTreeCircuit,
+    pub new_leaf: MerkleTreeCircuit,
+    pub new_leaf_val: Value<Fr>,
+    pub new_leaf_idx: Value<Fr>,
 }
-impl<F: PrimeField> Circuit<F> for InsertLeafCircuit<F> {
-    type Config = InsertLeafConfig<F>;
+impl Circuit<Fr> for InsertLeafCircuit {
+    type Config = InsertLeafConfig;
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
         Self::default()
     }
-    fn configure(meta: &mut halo2_proofs::plonk::ConstraintSystem<F>) -> Self::Config {
+    fn configure(meta: &mut halo2_proofs::plonk::ConstraintSystem<Fr>) -> Self::Config {
         let advices = [
+            meta.advice_column(),
             meta.advice_column(),
             meta.advice_column(),
             meta.advice_column(),
@@ -48,7 +49,7 @@ impl<F: PrimeField> Circuit<F> for InsertLeafCircuit<F> {
     fn synthesize(
         &self,
         config: Self::Config,
-        mut layouter: impl halo2_proofs::circuit::Layouter<F>,
+        mut layouter: impl halo2_proofs::circuit::Layouter<Fr>,
     ) -> Result<(), Error> {
         let merkle_tree_chip = MerkleTreeChip::construct(config.merkle_tree_config.clone());
         let chip = InsertLeafChip::construct(config);
@@ -95,7 +96,7 @@ impl<F: PrimeField> Circuit<F> for InsertLeafCircuit<F> {
             &merkle_tree_chip,
         );
 
-        let default_idx_leaf = Value::known(F::ZERO);
+        let default_idx_leaf = Value::known(Fr::zero());
 
         //need to add more constrin to it
         let prev_new_leaf_idx_val_merkle = MerkleTreeCircuit::new(
