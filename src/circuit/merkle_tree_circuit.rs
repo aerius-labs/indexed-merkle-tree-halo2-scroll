@@ -109,6 +109,8 @@ impl Circuit<Fr> for MerkleTreeCircuit {
                 self.path_indices[i],
             )?;
         }
+
+            println!("calculated merkle root = {:?}",digest.value());
         chip.expose_public(layouter.namespace(|| "public root"), &digest, 1)?;
         Ok(())
     }
@@ -163,6 +165,7 @@ mod tests {
         println!("ASSIGNENT DONE ");
 
         let correct_public_input = vec![Fr::from(leaf), root];
+        println!("expected merkle root ={:?}",correct_public_input[1]);
         let valid_prover = MockProver::run(10, &circuit, vec![correct_public_input]).unwrap();
         valid_prover.assert_satisfied();
 
