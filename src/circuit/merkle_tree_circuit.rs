@@ -9,7 +9,11 @@ pub struct MerkleTreeCircuit {
     pub path_indices: Vec<Value<Fr>>,
 }
 impl MerkleTreeCircuit {
-    pub fn new(leaf: Value<Fr>, path_elements: Vec<Value<Fr>>, path_indices: Vec<Value<Fr>>) -> Self {
+    pub fn new(
+        leaf: Value<Fr>,
+        path_elements: Vec<Value<Fr>>,
+        path_indices: Vec<Value<Fr>>,
+    ) -> Self {
         Self {
             leaf,
             path_elements,
@@ -74,7 +78,7 @@ impl Circuit<Fr> for MerkleTreeCircuit {
         let col_d = meta.advice_column();
         let instance = meta.instance_column();
 
-        MerkleTreeChip::configure(meta, [col_a, col_b, col_c,col_d], instance)
+        MerkleTreeChip::configure(meta, [col_a, col_b, col_c, col_d], instance)
     }
 
     fn synthesize(
@@ -118,7 +122,6 @@ mod tests {
     use halo2_proofs::{circuit::Value, dev::MockProver};
     use poseidon_circuit::Bn256Fr as Fr;
 
-
     fn compute_merkle_root(leaf: &u64, elements: &Vec<u64>, indices: &Vec<u64>) -> Fr {
         let k = elements.len();
         let mut digest = Fr::from(leaf.clone());
@@ -130,7 +133,6 @@ mod tests {
                 message = [Fr::from(elements[i]), digest];
             }
             digest = poseidon_hash(message);
-
         }
         return digest;
     }

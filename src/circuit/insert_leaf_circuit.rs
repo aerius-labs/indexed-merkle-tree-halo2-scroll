@@ -1,8 +1,8 @@
 use halo2_proofs::{
-    circuit::{SimpleFloorPlanner, Value}, plonk::{Circuit, Error}
+    circuit::{SimpleFloorPlanner, Value},
+    plonk::{Circuit, Error},
 };
 use poseidon_circuit::Bn256Fr as Fr;
-
 
 use crate::{
     chip::{
