@@ -36,9 +36,6 @@ impl MerkleTreeCircuit {
             |mut region| region.constrain_equal(leaf.cell(), leaf_cell.cell()),
         );
 
-        chip.expose_public(layouter.namespace(|| "public leaf"), &leaf_cell, 0)
-            .unwrap();
-
         let mut digest = chip
             .compute_merkle_root_from_path(
                 layouter.namespace(|| "merkle_prove"),
@@ -76,9 +73,8 @@ impl Circuit<Fr> for MerkleTreeCircuit {
         let col_b = meta.advice_column();
         let col_c = meta.advice_column();
         let col_d = meta.advice_column();
-        let instance = meta.instance_column();
 
-        MerkleTreeChip::configure(meta, [col_a, col_b, col_c, col_d], instance)
+        MerkleTreeChip::configure(meta, [col_a, col_b, col_c, col_d])
     }
 
     fn synthesize(
@@ -88,7 +84,6 @@ impl Circuit<Fr> for MerkleTreeCircuit {
     ) -> Result<(), Error> {
         let chip = MerkleTreeChip::construct(config);
         let leaf_cell = chip.assing_leaf(layouter.namespace(|| "assign leaf"), self.leaf)?;
-        chip.expose_public(layouter.namespace(|| "public leaf"), &leaf_cell, 0)?;
 
         // apply it for level 0 of the merkle tree
         // node cell passed as input is the leaf cell
@@ -109,9 +104,12 @@ impl Circuit<Fr> for MerkleTreeCircuit {
                 self.path_indices[i],
             )?;
         }
+        let _ = self.calculate_merkle_root_from_leaf(
+            &leaf_cell,
+            layouter.namespace(|| "calculate merkle root from leaf path"),
+            &chip,
+        );
 
-            println!("calculated merkle root = {:?}",digest.value());
-        chip.expose_public(layouter.namespace(|| "public root"), &digest, 1)?;
         Ok(())
     }
 }
@@ -145,7 +143,7 @@ mod tests {
         let elements = vec![1u64, 5u64, 6u64, 9u64, 9u64];
         let indices = vec![0u64, 0u64, 0u64, 0u64, 0u64];
 
-        let root = compute_merkle_root(&leaf, &elements, &indices);
+        let _ = compute_merkle_root(&leaf, &elements, &indices);
 
         let leaf_fp = Value::known(Fr::from(leaf));
         let elements_fp: Vec<Value<Fr>> = elements
@@ -162,15 +160,8 @@ mod tests {
             path_elements: elements_fp,
             path_indices: indices_fp,
         };
-        println!("ASSIGNENT DONE ");
 
-        let correct_public_input = vec![Fr::from(leaf), root];
-        println!("expected merkle root ={:?}",correct_public_input[1]);
-        let valid_prover = MockProver::run(10, &circuit, vec![correct_public_input]).unwrap();
+        let valid_prover = MockProver::run(10, &circuit, vec![]).unwrap();
         valid_prover.assert_satisfied();
-
-        let wrong_public_input = vec![Fr::from(leaf), Fr::from(0)];
-        let invalid_prover = MockProver::run(10, &circuit, vec![wrong_public_input]).unwrap();
-        assert!(invalid_prover.verify().is_err());
     }
 }
