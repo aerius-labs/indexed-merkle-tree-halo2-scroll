@@ -1,129 +1,150 @@
 use halo2_proofs::{
     circuit::{AssignedCell, Layouter, Value},
-    plonk::{Advice, Assigned, Column, ConstraintSystem, Error},
+    halo2curves::bn256::Fr,
+    halo2curves::group::ff::PrimeField,
+    plonk::{Advice, Assigned, Column, Error},
 };
+
+use poseidon_circuit::{
+    poseidon::{
+        primitives::{ConstantLength, Hash as PoseidonHash, P128Pow5T3},
+        Hash,
+    },
+    Hashable,
+};
+
+pub use poseidon_circuit::poseidon::{Pow5Chip as PoseidonChip, Pow5Config as PoseidonConfig};
+
+pub type P128Pow5T3Fr = P128Pow5T3<Fr>;
 
 pub const WIDTH: usize = 3;
 pub const RATE: usize = 2;
 pub const L: usize = 2;
 
-pub fn assign_private_input<F: PrimeField, V: Copy, N: Fn() -> NR, NR: Into<String>>(
-    name: N,
-    mut layouter: impl Layouter<F>,
-    column: Column<Advice>,
-    value: Value<V>,
-    offect: usize,
-) -> Result<AssignedCell<V, F>, Error>
-where
-    for<'v> Assigned<F>: From<&'v V>,
-{
-    layouter.assign_region(name, |mut region| {
-        region.assign_advice(|| "load advice", column, offect, || value)
-    })
-}
-use halo2_gadgets::poseidon::{primitives::*, Hash, Pow5Chip, Pow5Config};
-use halo2curves::group::ff::PrimeField;
-use std::marker::PhantomData;
 
-#[derive(Debug, Clone)]
+pub fn poseidon_hash_gadget<const L: usize>(
+    config: PoseidonConfig<Fr, 3, 2>,
+    mut layouter: impl Layouter<Fr>,
+    messages: [AssignedCell<Fr, Fr>; L],
+) -> Result<AssignedCell<Fr, Fr>, Error> {
+    let chip = PoseidonChip::construct(config);
+    let hasher = Hash::<_, _, P128Pow5T3<Fr>, ConstantLength<L>, 3, 2>::init(
+        chip,
+        layouter.namespace(|| "init poseidon hasher"),
+    )?;
 
-pub struct PoseidonConfig<F: PrimeField, const WIDTH: usize, const RATE: usize, const L: usize> {
-    pow5_config: Pow5Config<F, WIDTH, RATE>,
+    hasher.hash(layouter.namespace(|| "hash"), messages)
 }
 
-#[derive(Debug, Clone)]
-
-pub struct PoseidonChip<
-    F: PrimeField,
-    S: Spec<F, WIDTH, RATE>,
-    const WIDTH: usize,
-    const RATE: usize,
-    const L: usize,
-> {
-    config: PoseidonConfig<F, WIDTH, RATE, L>,
-    _marker: PhantomData<S>,
+pub fn poseidon_hash<F: Hashable, const L: usize>(message: [F; L]) -> F {
+    PoseidonHash::<F, P128Pow5T3<F>, ConstantLength<L>, 3, 2>::init().hash(message)
 }
-
-impl<
-        F: PrimeField,
-        S: Spec<F, WIDTH, RATE>,
-        const WIDTH: usize,
-        const RATE: usize,
-        const L: usize,
-    > PoseidonChip<F, S, WIDTH, RATE, L>
-{
-    pub fn construct(config: PoseidonConfig<F, WIDTH, RATE, L>) -> Self {
+#[derive(Debug, Clone, Default, Copy)]
+pub struct IndexedMerkleTreeLeaf {
+    pub val: Fr,
+    pub next_val: Fr,
+    pub next_idx: Fr,
+}
+impl IndexedMerkleTreeLeaf {
+    pub fn new(val: Fr, next_val: Fr, next_idx: Fr) -> Self {
         Self {
-            config,
-            _marker: PhantomData,
+            val,
+            next_val,
+            next_idx,
         }
-    }
-
-    // Configuration of the PoseidonChip
-    pub fn configure(
-        meta: &mut ConstraintSystem<F>,
-        hash_inputs: Vec<Column<Advice>>,
-    ) -> PoseidonConfig<F, WIDTH, RATE, L> {
-        let partial_sbox = meta.advice_column();
-        let rc_a = (0..WIDTH).map(|_| meta.fixed_column()).collect::<Vec<_>>();
-        let rc_b = (0..WIDTH).map(|_| meta.fixed_column()).collect::<Vec<_>>();
-
-        for i in 0..WIDTH {
-            meta.enable_equality(hash_inputs[i]);
-        }
-        meta.enable_constant(rc_b[0]);
-
-        let pow5_config = Pow5Chip::configure::<S>(
-            meta,
-            hash_inputs.try_into().unwrap(),
-            partial_sbox,
-            rc_a.try_into().unwrap(),
-            rc_b.try_into().unwrap(),
-        );
-
-        PoseidonConfig { pow5_config }
-    }
-
-    pub fn hash(
-        &self,
-        mut layouter: impl Layouter<F>,
-        input_cells: [AssignedCell<F, F>; L],
-    ) -> Result<AssignedCell<F, F>, Error> {
-        let pow5_chip = Pow5Chip::construct(self.config.pow5_config.clone());
-
-        // initialize the hasher
-        let hasher = Hash::<F, _, S, ConstantLength<L>, WIDTH, RATE>::init(
-            pow5_chip,
-            layouter.namespace(|| "hasher"),
-        )?;
-        hasher.hash(layouter.namespace(|| "hash"), input_cells)
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct MySpec<F: PrimeField, const WIDTH: usize, const RATE: usize> {
-    _marker: PhantomData<F>,
+#[derive(Debug)]
+pub struct NativeIndexedMerkleTree {
+    tree: Vec<Vec<Fr>>,
+    root: Fr,
 }
 
-impl<F: PrimeField, const WIDTH: usize, const RATE: usize> Spec<F, WIDTH, RATE>
-    for MySpec<F, WIDTH, RATE>
-{
-    fn full_rounds() -> usize {
-        8
+impl NativeIndexedMerkleTree {
+    pub fn new(leaves: Vec<Fr>) -> Result<NativeIndexedMerkleTree, &'static str> {
+        if leaves.is_empty() {
+            return Err("Cannot create Merkle Tree with no leaves");
+        }
+        if leaves.len() == 1 {
+            return Ok(NativeIndexedMerkleTree {
+                tree: vec![leaves.clone()],
+                root: leaves[0],
+            });
+        }
+        if leaves.len() % 2 == 1 {
+            return Err("Leaves must be even");
+        }
+
+        let mut tree = vec![leaves.clone()];
+        let mut current_level = leaves.clone();
+
+        while current_level.len() > 1 {
+            let mut next_level = Vec::new();
+            for i in (0..current_level.len()).step_by(2) {
+                let left = current_level[i];
+                let right = current_level[i + 1];
+
+                next_level.push(poseidon_hash([left, right]));
+            }
+            tree.push(next_level.clone());
+            current_level = next_level.clone();
+        }
+        Ok(NativeIndexedMerkleTree {
+            tree,
+            root: current_level[0],
+        })
     }
 
-    fn partial_rounds() -> usize {
-        56
+    pub fn get_root(&self) -> Fr {
+        self.root
     }
 
-    fn sbox(val: F) -> F {
-        val.pow_vartime(&[5])
+    pub fn get_proof(&self, index: usize) -> (Vec<Fr>, Vec<Fr>) {
+        let mut proof = Vec::new();
+        let mut proof_helper = Vec::new();
+        let mut current_index = index;
+
+        for i in 0..self.tree.len() - 1 {
+            let level = &self.tree[i];
+            let is_left_node = current_index % 2 == 0;
+            let sibling_index = if is_left_node {
+                current_index + 1
+            } else {
+                current_index - 1
+            };
+            let sibling = level[sibling_index];
+
+            proof.push(sibling);
+            proof_helper.push(if is_left_node {
+                Fr::from(1)
+            } else {
+                Fr::from(0)
+            });
+
+            current_index /= 2;
+        }
+
+        (proof, proof_helper)
     }
 
-    fn secure_mds() -> usize {
-        0
-    }
-    fn constants() -> (Vec<[F; WIDTH]>, Mds<F, WIDTH>, Mds<F, WIDTH>) {
-        unimplemented!()
+    pub fn verify_proof(&mut self, leaf: &Fr, index: usize, root: &Fr, proof: &[Fr]) -> bool {
+        let mut computed_hash = *leaf;
+        let mut current_index = index;
+
+        for i in 0..proof.len() {
+            let proof_element = &proof[i];
+            let is_left_node = current_index % 2 == 0;
+
+            computed_hash = if is_left_node {
+                poseidon_hash([computed_hash, *proof_element])
+            } else {
+                poseidon_hash([*proof_element, computed_hash])
+            };
+
+            current_index /= 2;
+        }
+
+        computed_hash == *root
     }
 }

@@ -4,8 +4,23 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-halo2_proofs = { git = "https://github.com/scroll-tech/halo2.git" }
+toml_edit = "=0.14.4"
+halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2.git", tag = "v2022_09_10"}
 halo2_gadgets = { git = "https://github.com/scroll-tech/halo2.git" }
 poseidon = { git = "https://github.com/scroll-tech/poseidon.git"}
 halo2curves = { git = "https://github.com/scroll-tech/halo2curves.git" }
-#poseidon-circuit = { git = "https://github.com/scroll-tech/poseidon-circuit", branch = "main" }
+poseidon-circuit = { git = "https://github.com/scroll-tech/poseidon-circuit.git" , rev = "69524f42"}
+#eth-types = { git = "https://github.com/polybase/zkevm-circuits.git", rev = "047b8ca" }
+#zkevm-circuits = { git = "https://github.com/polybase/zkevm-circuits.git" , rev = "047b8ca" }
+serde = "1.0.200"
+
+
+[patch."https://github.com/privacy-scaling-explorations/halo2.git"]
+halo2_proofs = { git = "https://github.com/scroll-tech/halo2.git",rev = "92fe9b3"}
+
+[features]
+default = ["halo2_proofs/parallel_syn", "short"]
+short = []
+print_layout = ["halo2_proofs/dev-graph"]
+legacy = []
+parallel_syn = ["halo2_proofs/parallel_syn"]
