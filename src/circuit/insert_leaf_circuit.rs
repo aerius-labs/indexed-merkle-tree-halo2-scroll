@@ -1,18 +1,21 @@
-use halo2_proofs::{ circuit::{ SimpleFloorPlanner, Value }, plonk::{ Circuit, Error } };
+use halo2_proofs::{
+    circuit::{SimpleFloorPlanner, Value},
+    plonk::{Circuit, Error},
+};
 use poseidon_circuit::Bn256Fr as Fr;
 
 use crate::{
     chip::{
-        insert_leaf_chip::{ InsertLeafChip, InsertLeafConfig },
+        insert_leaf_chip::{InsertLeafChip, InsertLeafConfig},
         merkle_tree_chip::MerkleTreeChip,
     },
-    utils::{ poseidon_hash_gadget, IndexedMerkleTreeLeaf },
+    utils::{poseidon_hash_gadget, IndexedMerkleTreeLeaf},
 };
 
 use super::merkle_tree_circuit::MerkleTreeCircuit;
 
 //TODO: name variable properly
-//TODO: Constrain path elements and idx 
+//TODO: Constrain path elements and idx
 //TODO: Remove the clone
 
 #[derive(Default, Debug, Clone)]
@@ -46,17 +49,13 @@ impl Circuit<Fr> for InsertLeafCircuit {
     fn synthesize(
         &self,
         config: Self::Config,
-        mut layouter: impl halo2_proofs::circuit::Layouter<Fr>
+        mut layouter: impl halo2_proofs::circuit::Layouter<Fr>,
     ) -> Result<(), Error> {
         let merkle_tree_chip = MerkleTreeChip::construct(config.merkle_tree_config.clone());
         let chip = InsertLeafChip::construct(config.clone());
 
-        let low_leaf_preimage = chip.assign_low_leaf(
-            layouter.namespace(|| "assign low leaf"),
-            self.idx_low_leaf
-        )?;
-
-        println!(" low leaf assigned {:#?}", low_leaf_preimage);
+        let low_leaf_preimage =
+            chip.assign_low_leaf(layouter.namespace(|| "assign low leaf"), self.idx_low_leaf)?;
 
         let low_leaf_hash = poseidon_hash_gadget(
             config.clone().merkle_tree_config.poseidon_config,
@@ -65,77 +64,77 @@ impl Circuit<Fr> for InsertLeafCircuit {
                 low_leaf_preimage[0].clone(),
                 low_leaf_preimage[1].clone(),
                 low_leaf_preimage[2].clone(),
-            ]
+            ],
         )?;
 
         //low_leaf should be replaced by hash of the low_leaf
         let old_root = self.low_leaf.calculate_merkle_root_from_leaf(
             &low_leaf_hash,
             layouter.namespace(|| "calculate the merkle root"),
-            &merkle_tree_chip
+            &merkle_tree_chip,
         );
 
         chip.constrian_old_root(
             layouter.namespace(|| "constrain calculate old root"),
-            &old_root
+            &old_root,
         )?;
-
-
 
         let new_leaf_preimage = chip.assign_new_leaf(
             layouter.namespace(|| "assign new leaf"),
             self.new_leaf_val,
-     //       &low_leaf_preimage[0],
             &low_leaf_preimage[1],
-            &low_leaf_preimage[2]
+            &low_leaf_preimage[2],
         )?;
-           println!(" new leaf assigned {:#?}", new_leaf_preimage);
-      
 
         let new_low_leaf = chip.assign_new_low_leaf(
             layouter.namespace(|| "assign new_low_leaf"),
             self.new_leaf_idx,
             &new_leaf_preimage[0],
-            &low_leaf_preimage[0]
+            &low_leaf_preimage[0],
         )?;
-
 
         let new_low_leaf_hash = poseidon_hash_gadget(
             config.clone().merkle_tree_config.poseidon_config,
             layouter.namespace(|| "hash new low leaf"),
-            [new_low_leaf[0].clone(), new_low_leaf[1].clone(), new_low_leaf[2].clone()]
+            [
+                new_low_leaf[0].clone(),
+                new_low_leaf[1].clone(),
+                new_low_leaf[2].clone(),
+            ],
         )?;
-        let mut exp =Vec::<Fr>::new();
-        let new_low_leaf_val = new_low_leaf_hash.value().map(|val| {exp.push(val.clone());  *val});
+        let mut exp = Vec::<Fr>::new();
+        let new_low_leaf_val = new_low_leaf_hash.value().map(|val| {
+            exp.push(val.clone());
+            *val
+        });
         let new_low_leaf_merkle = MerkleTreeCircuit::new(
             new_low_leaf_val,
             self.low_leaf.path_elements.clone(),
-            self.low_leaf.path_indices.clone()
+            self.low_leaf.path_indices.clone(),
         );
 
         let intermediate_new_low_leaf_root = new_low_leaf_merkle.calculate_merkle_root_from_leaf(
             &new_low_leaf_hash,
             layouter.namespace(|| "calculate the merkle root"),
-            &merkle_tree_chip
+            &merkle_tree_chip,
         );
 
         //need to add more constrin to it
-        let default_leaf_assign = chip.assign_default_leaf(
-            layouter.namespace(|| "assign default leaf")
-        )?;
+        let default_leaf_assign =
+            chip.assign_default_leaf(layouter.namespace(|| "assign default leaf"))?;
         let default_leaf_val = default_leaf_assign.value().map(|val| *val);
 
         let prev_new_leaf_idx_val_merkle = MerkleTreeCircuit::new(
             default_leaf_val,
             self.new_leaf.path_elements.clone(),
-            self.new_leaf.path_indices.clone()
+            self.new_leaf.path_indices.clone(),
         );
 
-        let intermediate_new_leaf_root =
-            prev_new_leaf_idx_val_merkle.calculate_merkle_root_from_leaf(
+        let intermediate_new_leaf_root = prev_new_leaf_idx_val_merkle
+            .calculate_merkle_root_from_leaf(
                 &default_leaf_assign,
                 layouter.namespace(|| "calculate the merkle root"),
-                &merkle_tree_chip
+                &merkle_tree_chip,
             );
 
         layouter.assign_region(
@@ -143,15 +142,24 @@ impl Circuit<Fr> for InsertLeafCircuit {
             |mut region| {
                 region.constrain_equal(
                     intermediate_new_low_leaf_root.cell(),
-                    intermediate_new_leaf_root.cell()
+                    intermediate_new_leaf_root.cell(),
                 )
-            }
+            },
         )?;
-
 
         //calculate the idx new leaf hash and replace it with new_leaf[0]
 
-        chip.assign_values_to_compare(layouter.namespace(||"low val  < new val"), &new_low_leaf[0], &new_leaf_preimage[0]);
+        chip.assign_values_to_compare(
+            layouter.namespace(|| "low val  < new val"),
+            &new_low_leaf[0],
+            &new_leaf_preimage[0],
+        )?;
+        chip.compare_low_leaf_nxt_val_and_new_leaf_val(
+            layouter
+                .namespace(|| "constrain low leaf less than new leaf or low leaf nxt val == 0 "),
+            &low_leaf_preimage[1],
+            &new_leaf_preimage[0],
+        )?;
 
         let new_leaf_hash = poseidon_hash_gadget(
             config.clone().merkle_tree_config.poseidon_config,
@@ -160,16 +168,16 @@ impl Circuit<Fr> for InsertLeafCircuit {
                 new_leaf_preimage[0].clone(),
                 new_leaf_preimage[1].clone(),
                 new_leaf_preimage[2].clone(),
-            ]
+            ],
         )?;
         let calculated_new_root = self.new_leaf.calculate_merkle_root_from_leaf(
             &new_leaf_hash,
             layouter.namespace(|| "calculate the merkle root"),
-            &merkle_tree_chip
+            &merkle_tree_chip,
         );
         chip.constrian_new_root(
             layouter.namespace(|| "constrian new root"),
-            &calculated_new_root
+            &calculated_new_root,
         )?;
 
         Ok(())
@@ -177,18 +185,18 @@ impl Circuit<Fr> for InsertLeafCircuit {
 }
 #[cfg(test)]
 mod test {
-    use halo2_proofs::{ circuit::Value, dev::MockProver };
+    use halo2_proofs::{circuit::Value, dev::MockProver};
     use poseidon_circuit::Bn256Fr as Fr;
 
     use crate::{
-        circuit::{ insert_leaf_circuit::InsertLeafCircuit, merkle_tree_circuit::MerkleTreeCircuit },
-        utils::{ poseidon_hash, IndexedMerkleTreeLeaf, NativeIndexedMerkleTree },
+        circuit::{insert_leaf_circuit::InsertLeafCircuit, merkle_tree_circuit::MerkleTreeCircuit},
+        utils::{poseidon_hash, IndexedMerkleTreeLeaf, NativeIndexedMerkleTree},
     };
 
     fn update_idx_leaf(
         leaves: Vec<IndexedMerkleTreeLeaf>,
         new_val: Fr,
-        new_val_idx: u64
+        new_val_idx: u64,
     ) -> (Vec<IndexedMerkleTreeLeaf>, usize) {
         let mut nullifier_tree_preimages = leaves.clone();
         let mut low_leaf_idx = 0;
@@ -202,12 +210,10 @@ mod test {
             }
             if node.val < new_val && (node.next_val > new_val || node.next_val == Fr::zero()) {
                 nullifier_tree_preimages[new_val_idx as usize].val = new_val;
-                nullifier_tree_preimages[new_val_idx as usize].next_val = nullifier_tree_preimages[
-                    i
-                ].next_val;
-                nullifier_tree_preimages[new_val_idx as usize].next_idx = nullifier_tree_preimages[
-                    i
-                ].next_idx;
+                nullifier_tree_preimages[new_val_idx as usize].next_val =
+                    nullifier_tree_preimages[i].next_val;
+                nullifier_tree_preimages[new_val_idx as usize].next_idx =
+                    nullifier_tree_preimages[i].next_idx;
                 nullifier_tree_preimages[i].next_val = new_val;
                 nullifier_tree_preimages[i].next_idx = Fr::from(new_val_idx);
                 low_leaf_idx = i;
@@ -234,7 +240,7 @@ mod test {
             Fr::from(35),
         ];
 
-        let new_vals = [Fr::from(10)];
+        //   let new_vals = [Fr::from(10)];
 
         let mut nullifier_tree_preimages = (0..8)
             .map(|_| IndexedMerkleTreeLeaf {
@@ -260,14 +266,13 @@ mod test {
             (nullifier_tree_preimages, low_leaf_idx) = update_idx_leaf(
                 nullifier_tree_preimages.clone(),
                 *new_val,
-                (round as u64) + 1
+                (round as u64) + 1,
             );
 
             let low_leaf = old_nullifier_tree_preimages[low_leaf_idx].clone();
 
-            let old_nullifier_tree_preimages_hash = hash_nullifier_pre_images(
-                old_nullifier_tree_preimages.clone()
-            );
+            let old_nullifier_tree_preimages_hash =
+                hash_nullifier_pre_images(old_nullifier_tree_preimages.clone());
 
             let (low_leaf_proof, low_leaf_proof_helper) = tree.get_proof(low_leaf_idx);
 
@@ -283,9 +288,10 @@ mod test {
                 &nullifier_tree_leaves[round + 1].clone(),
                 round + 1,
                 &new_root,
-                &new_leaf_proof
+                &new_leaf_proof,
             );
-            let is_new_leaf_largest = if nullifier_tree_preimages[round + 1].next_val == Fr::zero() {
+            let is_new_leaf_largest = if nullifier_tree_preimages[round + 1].next_val == Fr::zero()
+            {
                 Fr::from(true)
             } else {
                 Fr::from(false)
@@ -328,7 +334,7 @@ mod test {
             let merkle_new_leaf = MerkleTreeCircuit::new(
                 new_leaf_merkle,
                 new_leaf_path_elements,
-                new_leaf_path_indices
+                new_leaf_path_indices,
             );
 
             let insert_leaf_circuit = InsertLeafCircuit {
@@ -341,7 +347,7 @@ mod test {
 
             let instances = [is_new_leaf_largest, old_root, default_leaf, new_root].to_vec();
 
-            let prover = MockProver::<Fr>::run(10, &insert_leaf_circuit, vec![instances]).unwrap();
+            let prover = MockProver::<Fr>::run(15, &insert_leaf_circuit, vec![instances]).unwrap();
 
             prover.verify().unwrap();
 
