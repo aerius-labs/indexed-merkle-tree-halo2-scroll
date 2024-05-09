@@ -12,7 +12,7 @@ use crate::{
 use super::merkle_tree_circuit::MerkleTreeCircuit;
 
 //TODO: name variable properly
-//TODO: Calculate the root of the assigned idx leafs
+//TODO: Constrain path elements and idx 
 //TODO: Remove the clone
 
 #[derive(Default, Debug, Clone)]
@@ -55,8 +55,8 @@ impl Circuit<Fr> for InsertLeafCircuit {
             layouter.namespace(|| "assign low leaf"),
             self.idx_low_leaf
         )?;
-        let pll = low_leaf_preimage.iter().map(|val| val.value()).collect::<Vec<_>>();
-      //  println!("row 0 values = {:#?}",pll);
+
+        println!(" low leaf assigned {:#?}", low_leaf_preimage);
 
         let low_leaf_hash = poseidon_hash_gadget(
             config.clone().merkle_tree_config.poseidon_config,
@@ -80,14 +80,17 @@ impl Circuit<Fr> for InsertLeafCircuit {
             &old_root
         )?;
 
+
+
         let new_leaf_preimage = chip.assign_new_leaf(
             layouter.namespace(|| "assign new leaf"),
             self.new_leaf_val,
+     //       &low_leaf_preimage[0],
             &low_leaf_preimage[1],
             &low_leaf_preimage[2]
         )?;
-        let pnl = new_leaf_preimage.iter().map(|val| val.value()).collect::<Vec<_>>();
-       // println!("row 1 values = {:#?}", pnl);
+           println!(" new leaf assigned {:#?}", new_leaf_preimage);
+      
 
         let new_low_leaf = chip.assign_new_low_leaf(
             layouter.namespace(|| "assign new_low_leaf"),
@@ -96,16 +99,14 @@ impl Circuit<Fr> for InsertLeafCircuit {
             &low_leaf_preimage[0]
         )?;
 
-    let pnll= new_low_leaf.iter().map(|val| val.value()).collect::<Vec<_>>();
-       // println!("row 2 values = {:#?}", pnll);
 
-        //Replace the low_leaf[0] with the hash of the new_low_leaf
         let new_low_leaf_hash = poseidon_hash_gadget(
             config.clone().merkle_tree_config.poseidon_config,
             layouter.namespace(|| "hash new low leaf"),
             [new_low_leaf[0].clone(), new_low_leaf[1].clone(), new_low_leaf[2].clone()]
         )?;
-        let new_low_leaf_val = new_low_leaf_hash.value().map(|val| *val);
+        let mut exp =Vec::<Fr>::new();
+        let new_low_leaf_val = new_low_leaf_hash.value().map(|val| {exp.push(val.clone());  *val});
         let new_low_leaf_merkle = MerkleTreeCircuit::new(
             new_low_leaf_val,
             self.low_leaf.path_elements.clone(),
@@ -147,7 +148,10 @@ impl Circuit<Fr> for InsertLeafCircuit {
             }
         )?;
 
+
         //calculate the idx new leaf hash and replace it with new_leaf[0]
+
+        chip.assign_values_to_compare(layouter.namespace(||"low val  < new val"), &new_low_leaf[0], &new_leaf_preimage[0]);
 
         let new_leaf_hash = poseidon_hash_gadget(
             config.clone().merkle_tree_config.poseidon_config,
@@ -230,7 +234,7 @@ mod test {
             Fr::from(35),
         ];
 
-        //let new_vals = [Fr::from(10)];
+        let new_vals = [Fr::from(10)];
 
         let mut nullifier_tree_preimages = (0..8)
             .map(|_| IndexedMerkleTreeLeaf {
