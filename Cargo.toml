@@ -1,5 +1,5 @@
 [package]
-name = "indexed-merkle-tree-scroll"
+name = "indexed_merkle_tree"
 version = "0.1.0"
 edition = "2021"
 
