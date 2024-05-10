@@ -51,7 +51,6 @@ impl InsertLeafChip {
         let nxt_idx = advices[2];
         let hash_col = advices[6];
 
-
         // Enable Equality
         meta.enable_equality(val_col);
         meta.enable_equality(nxt_val);
@@ -97,8 +96,6 @@ impl InsertLeafChip {
 
             vec![s * (is_greatest + is_low_leaf_nxt_val_zero - Expression::Constant(Fr::from(1)))]
         });
-
-    
 
         let merkle_tree_advices = [advices[3], advices[4], advices[5], hash_col];
 

@@ -868,7 +868,6 @@ dependencies = [
  "halo2curves 0.3.1 (git+https://github.com/scroll-tech/halo2curves.git)",
  "poseidon 0.2.0 (git+https://github.com/scroll-tech/poseidon.git)",
  "poseidon-circuit",
- "serde",
  "toml_edit",
 ]
 
