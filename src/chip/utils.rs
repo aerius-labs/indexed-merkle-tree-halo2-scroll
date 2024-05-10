@@ -1,12 +1,13 @@
 //! Utility traits, functions used in the crate.
 
-use halo2_proofs::{ arithmetic::FieldExt, halo2curves::group::ff::PrimeField, plonk::Expression};
-
+use halo2_proofs::{arithmetic::FieldExt, halo2curves::group::ff::PrimeField, plonk::Expression};
 
 /// Returns the sum of the passed in cells
 pub mod sum {
 
-    use halo2_proofs::{arithmetic::FieldExt, halo2curves::group::ff::PrimeField, plonk::Expression};
+    use halo2_proofs::{
+        arithmetic::FieldExt, halo2curves::group::ff::PrimeField, plonk::Expression,
+    };
 
     use super::Expr;
 
@@ -29,7 +30,7 @@ pub mod sum {
 /// otherwise. Inputs need to be boolean
 pub mod and {
     use super::Expr;
-    use halo2_proofs::{ arithmetic::FieldExt,plonk::Expression};
+    use halo2_proofs::{arithmetic::FieldExt, plonk::Expression};
 
     /// Returns an expression that evaluates to 1 only if all the expressions in
     /// the given list are 1, else returns 0.
@@ -48,8 +49,8 @@ pub mod and {
 /// Returns `1` when `expr[0] || expr[1] || ... == 1`, and returns `0`
 /// otherwise. Inputs need to be boolean
 pub mod or {
-    use super::{and, not};
     use super::Expr;
+    use super::{and, not};
     use halo2_proofs::arithmetic::FieldExt;
     use halo2_proofs::plonk::Expression;
 
@@ -69,7 +70,7 @@ pub mod or {
 /// `b` needs to be boolean
 pub mod not {
     use super::Expr;
-    use halo2_proofs::{ arithmetic::FieldExt,plonk::Expression};
+    use halo2_proofs::{arithmetic::FieldExt, plonk::Expression};
 
     /// Returns an expression that represents the NOT of the given expression.
     pub fn expr<F: FieldExt, E: Expr<F>>(b: E) -> Expression<F> {
@@ -85,8 +86,8 @@ pub mod not {
 /// Returns `a ^ b`.
 /// `a` and `b` needs to be boolean
 pub mod xor {
-   use super::Expr;
-   use halo2_proofs::{ arithmetic::FieldExt,plonk::Expression};
+    use super::Expr;
+    use halo2_proofs::{arithmetic::FieldExt, plonk::Expression};
 
     /// Returns an expression that represents the XOR of the given expression.
     pub fn expr<F: FieldExt, E: Expr<F>>(a: E, b: E) -> Expression<F> {
@@ -102,8 +103,8 @@ pub mod xor {
 /// Returns `when_true` when `selector == 1`, and returns `when_false` when
 /// `selector == 0`. `selector` needs to be boolean.
 pub mod select {
-   use super::Expr;
-   use halo2_proofs::{ arithmetic::FieldExt,plonk::Expression};
+    use super::Expr;
+    use halo2_proofs::{arithmetic::FieldExt, plonk::Expression};
 
     /// Returns the `when_true` expression when the selector is true, else
     /// returns the `when_false` expression.
@@ -143,8 +144,6 @@ pub trait Expr<F: PrimeField> {
     fn expr(&self) -> Expression<F>;
 }
 
-
-
 impl<F: PrimeField> Expr<F> for Expression<F> {
     #[inline]
     fn expr(&self) -> Expression<F> {
@@ -163,7 +162,12 @@ impl<F: PrimeField> Expr<F> for i32 {
     #[inline]
     fn expr(&self) -> Expression<F> {
         Expression::Constant(
-            F::from(self.unsigned_abs() as u64) * if self.is_negative() { -F::one() } else { F::one() },
+            F::from(self.unsigned_abs() as u64)
+                * if self.is_negative() {
+                    -F::one()
+                } else {
+                    F::one()
+                },
         )
     }
 }

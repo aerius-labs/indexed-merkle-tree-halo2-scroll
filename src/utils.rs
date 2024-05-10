@@ -1,8 +1,7 @@
 use halo2_proofs::{
-    circuit::{AssignedCell, Layouter, Value},
+    circuit::{AssignedCell, Layouter},
     halo2curves::bn256::Fr,
-    halo2curves::group::ff::PrimeField,
-    plonk::{Advice, Assigned, Column, Error},
+    plonk::Error,
 };
 
 use poseidon_circuit::{
@@ -20,7 +19,6 @@ pub type P128Pow5T3Fr = P128Pow5T3<Fr>;
 pub const WIDTH: usize = 3;
 pub const RATE: usize = 2;
 pub const L: usize = 2;
-
 
 pub fn poseidon_hash_gadget<const L: usize>(
     config: PoseidonConfig<Fr, 3, 2>,

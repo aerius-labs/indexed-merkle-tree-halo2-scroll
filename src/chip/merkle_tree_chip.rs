@@ -1,10 +1,10 @@
-use std::marker::PhantomData;
 use halo2_proofs::{
     circuit::{AssignedCell, Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Selector},
     poly::Rotation,
 };
 use poseidon_circuit::Bn256Fr as Fr;
+use std::marker::PhantomData;
 
 use crate::utils::{poseidon_hash_gadget, P128Pow5T3Fr, PoseidonChip, PoseidonConfig};
 
