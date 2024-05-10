@@ -280,7 +280,7 @@ mod test {
 
             tree = NativeIndexedMerkleTree::new(nullifier_tree_leaves.clone()).unwrap();
 
-            let new_leaf = nullifier_tree_preimages[round + 1].clone();
+            let _ = nullifier_tree_preimages[round + 1].clone();
             let new_leaf_index = Fr::from((round as u64) + 1);
             let (new_leaf_proof, new_leaf_proof_helper) = tree.get_proof(round + 1);
             let new_root = tree.get_root();
