@@ -9,7 +9,7 @@ use crate::{
         insert_leaf_chip::{InsertLeafChip, InsertLeafConfig},
         merkle_tree_chip::MerkleTreeChip,
     },
-    utils::{poseidon_hash_gadget, IndexedMerkleTreeLeaf},
+    utils::{poseidon_hash, poseidon_hash_gadget, IndexedMerkleTreeLeaf},
 };
 
 use super::merkle_tree_circuit::MerkleTreeCircuit;
@@ -183,66 +183,49 @@ impl Circuit<Fr> for InsertLeafCircuit {
         Ok(())
     }
 }
+
 #[cfg(test)]
 mod test {
+    use std::time::Instant;
+
     use halo2_proofs::{circuit::Value, dev::MockProver};
     use poseidon_circuit::Bn256Fr as Fr;
 
     use crate::{
         circuit::{insert_leaf_circuit::InsertLeafCircuit, merkle_tree_circuit::MerkleTreeCircuit},
-        utils::{poseidon_hash, IndexedMerkleTreeLeaf, NativeIndexedMerkleTree},
+        utils::{
+            get_low_leaf_idx, hash_indexd_leaf, update_sparse_idx_leaf, IndexedMerkleTreeLeaf,
+            NativeIndexedMerkleTree,
+        },
     };
 
-    fn update_idx_leaf(
-        leaves: Vec<IndexedMerkleTreeLeaf>,
-        new_val: Fr,
-        new_val_idx: u64,
-    ) -> (Vec<IndexedMerkleTreeLeaf>, usize) {
-        let mut nullifier_tree_preimages = leaves.clone();
-        let mut low_leaf_idx = 0;
-        for (i, node) in leaves.iter().enumerate() {
-            if node.next_val == Fr::zero() && i == 0 {
-                nullifier_tree_preimages[i + 1].val = new_val;
-                nullifier_tree_preimages[i].next_val = new_val;
-                nullifier_tree_preimages[i].next_idx = Fr::from((i as u64) + 1);
-                low_leaf_idx = i;
-                break;
-            }
-            if node.val < new_val && (node.next_val > new_val || node.next_val == Fr::zero()) {
-                nullifier_tree_preimages[new_val_idx as usize].val = new_val;
-                nullifier_tree_preimages[new_val_idx as usize].next_val =
-                    nullifier_tree_preimages[i].next_val;
-                nullifier_tree_preimages[new_val_idx as usize].next_idx =
-                    nullifier_tree_preimages[i].next_idx;
-                nullifier_tree_preimages[i].next_val = new_val;
-                nullifier_tree_preimages[i].next_idx = Fr::from(new_val_idx);
-                low_leaf_idx = i;
-                break;
-            }
-        }
-        (nullifier_tree_preimages, low_leaf_idx)
-    }
-    fn hash_nullifier_pre_images(nullifier_tree_preimages: Vec<IndexedMerkleTreeLeaf>) -> Vec<Fr> {
-        nullifier_tree_preimages
-            .iter()
-            .map(|leaf| poseidon_hash([leaf.val, leaf.next_val, leaf.next_idx]))
-            .collect::<Vec<_>>()
-    }
-
     #[test]
-    fn test_insert_leafs_circuit() {
+    fn test_insert_leaf_circuit() {
+        let depth = 30;
         let new_vals = [
-            Fr::from(30),
+            Fr::from(74),
+            Fr::from(58),
+            Fr::from(77),
+            Fr::from(95),
+            Fr::from(60),
+            Fr::from(9),
+            Fr::from(79),
             Fr::from(10),
-            Fr::from(20),
-            Fr::from(5),
-            Fr::from(50),
-            Fr::from(35),
+            Fr::from(30),
+            Fr::from(57),
+            Fr::from(56),
+            Fr::from(51),
+            Fr::from(44),
+            Fr::from(11),
+            Fr::from(1),
+            Fr::from(22),
+            Fr::from(55),
+            Fr::from(13),
+            Fr::from(90),
+            Fr::from(26),
         ];
 
-        //   let new_vals = [Fr::from(10)];
-
-        let mut nullifier_tree_preimages = (0..8)
+        let mut nullifier_tree_preimages = (0..new_vals.len() + 1)
             .map(|_| IndexedMerkleTreeLeaf {
                 val: Fr::from(0u64),
                 next_val: Fr::from(0u64),
@@ -250,46 +233,35 @@ mod test {
             })
             .collect::<Vec<_>>();
 
-        let mut old_nullifier_tree_preimages = nullifier_tree_preimages.clone();
-
-        let mut nullifier_tree_leaves = hash_nullifier_pre_images(nullifier_tree_preimages.clone());
-
-        let default_leaf = nullifier_tree_leaves[0].clone();
-
+        let default_leaf = Fr::zero();
         let mut low_leaf_idx = 0;
 
-        let mut tree = NativeIndexedMerkleTree::new(nullifier_tree_leaves.clone()).unwrap();
+        let mut tree = NativeIndexedMerkleTree::new_default_leaf(depth);
+        let init_idx_leaf = hash_indexd_leaf(&nullifier_tree_preimages[0]);
+
+        tree.insert_leaf(init_idx_leaf, 0);
 
         for (round, new_val) in new_vals.iter().enumerate() {
             let old_root = tree.get_root();
 
-            (nullifier_tree_preimages, low_leaf_idx) = update_idx_leaf(
-                nullifier_tree_preimages.clone(),
-                *new_val,
-                (round as u64) + 1,
-            );
+            low_leaf_idx = get_low_leaf_idx(&nullifier_tree_preimages, *new_val);
 
-            let low_leaf = old_nullifier_tree_preimages[low_leaf_idx].clone();
-
-            let old_nullifier_tree_preimages_hash =
-                hash_nullifier_pre_images(old_nullifier_tree_preimages.clone());
-
+            let idx_low_leaf = nullifier_tree_preimages[low_leaf_idx].clone();
             let (low_leaf_proof, low_leaf_proof_helper) = tree.get_proof(low_leaf_idx);
 
-            nullifier_tree_leaves = hash_nullifier_pre_images(nullifier_tree_preimages.clone());
+            update_sparse_idx_leaf(&mut nullifier_tree_preimages, *new_val, (round as u64) + 1);
 
-            tree = NativeIndexedMerkleTree::new(nullifier_tree_leaves.clone()).unwrap();
+            let new_low_leaf = hash_indexd_leaf(&nullifier_tree_preimages[low_leaf_idx]);
 
-            let _ = nullifier_tree_preimages[round + 1].clone();
-            let new_leaf_index = Fr::from((round as u64) + 1);
-            let (new_leaf_proof, new_leaf_proof_helper) = tree.get_proof(round + 1);
+            tree.insert_leaf(new_low_leaf, low_leaf_idx);
+
+            let new_val_merkle_leaf = hash_indexd_leaf(&nullifier_tree_preimages[round + 1]);
+
+            let (new_leaf_proof, new_leaf_proof_helper) =
+                tree.insert_leaf(new_val_merkle_leaf, round + 1);
+
             let new_root = tree.get_root();
-            tree.verify_proof(
-                &nullifier_tree_leaves[round + 1].clone(),
-                round + 1,
-                &new_root,
-                &new_leaf_proof,
-            );
+
             let is_new_leaf_largest = if nullifier_tree_preimages[round + 1].next_val == Fr::zero()
             {
                 Fr::from(true)
@@ -297,7 +269,6 @@ mod test {
                 Fr::from(false)
             };
 
-            let leaf = Value::known(old_nullifier_tree_preimages_hash[low_leaf_idx].clone());
             let path_elements = low_leaf_proof
                 .iter()
                 .map(|proof| Value::known(*proof))
@@ -313,9 +284,10 @@ mod test {
                 })
                 .collect::<Vec<_>>();
 
-            let merkle_low_leaf = MerkleTreeCircuit::new(leaf, path_elements, path_indices);
+            let merkle_low_leaf =
+                MerkleTreeCircuit::new(Value::known(init_idx_leaf), path_elements, path_indices);
 
-            let new_leaf_merkle = Value::known(nullifier_tree_leaves[round + 1].clone());
+            let new_leaf_merkle = Value::known(new_val_merkle_leaf);
             let new_leaf_path_elements = new_leaf_proof
                 .iter()
                 .map(|proof| Value::known(*proof))
@@ -336,26 +308,21 @@ mod test {
                 new_leaf_path_elements,
                 new_leaf_path_indices,
             );
-
-            let insert_leaf_circuit = InsertLeafCircuit {
-                idx_low_leaf: low_leaf.clone(),
+            let circuit = InsertLeafCircuit {
+                idx_low_leaf,
                 low_leaf: merkle_low_leaf,
                 new_leaf: merkle_new_leaf,
                 new_leaf_val: Value::known(*new_val),
-                new_leaf_idx: Value::known(new_leaf_index),
+                new_leaf_idx: Value::known(Fr::from((round + 1) as u64)),
             };
 
             let instances = [is_new_leaf_largest, old_root, default_leaf, new_root].to_vec();
+            let start = Instant::now();
 
-            let prover = MockProver::<Fr>::run(15, &insert_leaf_circuit, vec![instances]).unwrap();
+            let prover = MockProver::run(15, &circuit, vec![instances]);
+            let end = start.elapsed();
 
-            prover.verify().unwrap();
-
-            println!("COMPLETED ROUND {}", round + 1);
-
-            //verify the InsertLeaf circuit
-
-            old_nullifier_tree_preimages = nullifier_tree_preimages.clone();
+            prover.unwrap().verify();
         }
     }
 }

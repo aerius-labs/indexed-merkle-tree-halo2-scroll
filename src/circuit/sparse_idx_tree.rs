@@ -1,96 +1,9 @@
-use halo2_proofs::{
-    circuit::{AssignedCell, Layouter},
-    halo2curves::bn256::Fr,
-    plonk::Error,
-};
+#[allow(unused)]
+use std::time::Instant;
 
-use poseidon_circuit::{
-    poseidon::{
-        primitives::{ConstantLength, Hash as PoseidonHash, P128Pow5T3},
-        Hash,
-    },
-    Hashable,
-};
+use poseidon_circuit::Bn256Fr as Fr;
 
-pub use poseidon_circuit::poseidon::{Pow5Chip as PoseidonChip, Pow5Config as PoseidonConfig};
-
-pub type P128Pow5T3Fr = P128Pow5T3<Fr>;
-
-pub const WIDTH: usize = 3;
-pub const RATE: usize = 2;
-pub const L: usize = 2;
-
-pub fn poseidon_hash_gadget<const L: usize>(
-    config: PoseidonConfig<Fr, 3, 2>,
-    mut layouter: impl Layouter<Fr>,
-    messages: [AssignedCell<Fr, Fr>; L],
-) -> Result<AssignedCell<Fr, Fr>, Error> {
-    let chip = PoseidonChip::construct(config);
-    let hasher = Hash::<_, _, P128Pow5T3<Fr>, ConstantLength<L>, 3, 2>::init(
-        chip,
-        layouter.namespace(|| "init poseidon hasher"),
-    )?;
-
-    hasher.hash(layouter.namespace(|| "hash"), messages)
-}
-
-pub fn poseidon_hash<F: Hashable, const L: usize>(message: [F; L]) -> F {
-    PoseidonHash::<F, P128Pow5T3<F>, ConstantLength<L>, 3, 2>::init().hash(message)
-}
-#[derive(Debug, Clone, Default, Copy)]
-pub struct IndexedMerkleTreeLeaf {
-    pub val: Fr,
-    pub next_val: Fr,
-    pub next_idx: Fr,
-}
-impl IndexedMerkleTreeLeaf {
-    pub fn new(val: Fr, next_val: Fr, next_idx: Fr) -> Self {
-        Self {
-            val,
-            next_val,
-            next_idx,
-        }
-    }
-}
-
-pub fn get_low_leaf_idx(leaves: &Vec<IndexedMerkleTreeLeaf>, new_val: Fr) -> usize {
-    let mut low_leaf_idx = 0;
-    for (i, node) in leaves.iter().enumerate() {
-        if node.next_val == Fr::zero() && i == 0 {
-            low_leaf_idx = i;
-            break;
-        }
-        if node.val < new_val && (node.next_val > new_val || node.next_val == Fr::zero()) {
-            low_leaf_idx = i;
-            break;
-        }
-    }
-    low_leaf_idx
-}
-pub fn update_sparse_idx_leaf(
-    leaves: &mut Vec<IndexedMerkleTreeLeaf>,
-    new_val: Fr,
-    new_val_idx: u64,
-) {
-    let mut low_leaf_idx = 0;
-    for (i, node) in leaves.iter().enumerate() {
-        if node.next_val == Fr::zero() && i == 0 {
-            leaves[i + 1].val = new_val;
-            leaves[i].next_val = new_val;
-            leaves[i].next_idx = Fr::from((i as u64) + 1);
-            low_leaf_idx = i;
-            break;
-        }
-        if node.val < new_val && (node.next_val > new_val || node.next_val == Fr::zero()) {
-            leaves[new_val_idx as usize].val = new_val;
-            leaves[new_val_idx as usize].next_val = leaves[i].next_val;
-            leaves[new_val_idx as usize].next_idx = leaves[i].next_idx;
-            leaves[i].next_val = new_val;
-            leaves[i].next_idx = Fr::from(new_val_idx);
-            break;
-        }
-    }
-}
+use crate::utils::poseidon_hash;
 
 #[derive(Debug, Default)]
 pub struct NativeIndexedMerkleTree {
@@ -233,6 +146,18 @@ impl NativeIndexedMerkleTree {
     }
 }
 
-pub fn hash_indexd_leaf(leaf: &IndexedMerkleTreeLeaf) -> Fr {
-    poseidon_hash([leaf.val, leaf.next_val, leaf.next_idx, Fr::one()])
+#[test]
+fn test_native_indexed_tree() {
+    let start = Instant::now();
+    let mut T = NativeIndexedMerkleTree::new_default_leaf(32);
+    T.insert_leaf(Fr::from(3), 1);
+    T.insert_leaf(Fr::from(20), 2);
+    T.insert_leaf(Fr::from(10), 3);
+    let (p, _) = T.insert_leaf(Fr::from(13), 4);
+
+    let end = start.elapsed();
+    println!("time taken to calculate ={:?}", end);
+
+    let r = T.get_root();
+    print!("check {}", T.verify_proof(4, &r, &p));
 }
