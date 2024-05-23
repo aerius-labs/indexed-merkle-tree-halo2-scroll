@@ -32,7 +32,7 @@ impl NativeIndexedMerkleTree {
 
     pub fn insert_leaf(&mut self, leaf: Fr, index: usize) -> (Vec<Fr>, Vec<Fr>) {
         let mut current_index = index;
-        if self.nodes[0].len() >= index {
+        if index >= self.nodes[0].len() {
             self.nodes[0].push(Fr::zero());
         }
         self.nodes[0][index] = leaf;
@@ -59,7 +59,7 @@ impl NativeIndexedMerkleTree {
 
             let parent_leaf_idx = current_index.clone() / 2;
 
-            if self.nodes[i + 1].len() <= parent_leaf_idx {
+            if parent_leaf_idx >= self.nodes[i + 1].len() {
                 self.nodes[i + 1].push(Fr::zero());
             }
             self.nodes[i + 1][parent_leaf_idx] = if is_left_node {
