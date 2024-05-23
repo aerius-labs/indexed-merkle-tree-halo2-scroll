@@ -1,14 +1,37 @@
 #[allow(unused)]
 use std::time::Instant;
 
-use poseidon_circuit::Bn256Fr as Fr;
+use poseidon_circuit::{hash, Bn256Fr as Fr};
 
 use crate::utils::poseidon_hash;
+
+
+
+#[derive(Debug, Default)]
+pub struct Hashes {
+    list: Vec<Fr>,
+}
+
+impl Hashes {
+    fn new(depth: usize) -> Self {
+        let mut list = vec![Fr::zero(); 32];
+        list[0] = Fr::zero();
+        for i in 2..depth {
+            list[i] = poseidon_hash([list[i-1], list[i-1]]);
+        }
+        Hashes { list }
+    }
+
+    fn get(&self, index: usize) -> Fr {
+            self.list[index]
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct NativeIndexedMerkleTree {
     pub nodes: Vec<Vec<Fr>>,
     pub root: Fr,
+    pub list_of_hashes: Hashes
 }
 
 impl NativeIndexedMerkleTree {
@@ -20,9 +43,13 @@ impl NativeIndexedMerkleTree {
             nodes.push(level_nodes);
         }
         nodes.push(vec![Fr::zero()]);
+
+        let list_of_hashes = Hashes::new(depth);
+
         NativeIndexedMerkleTree {
             nodes,
             root: Fr::zero(),
+            list_of_hashes,
         }
     }
 
@@ -53,7 +80,7 @@ impl NativeIndexedMerkleTree {
             let sibling = if sibling_index < level.len() {
                 level[sibling_index]
             } else {
-                Fr::zero()
+                self.list_of_hashes.get(i)
             };
             proof.push(sibling);
 
@@ -95,7 +122,7 @@ impl NativeIndexedMerkleTree {
             let sibling = if sibling_index < level.len() {
                 level[sibling_index]
             } else {
-                Fr::zero()
+                self.list_of_hashes.get(i)
             };
             proof.push(sibling);
             proof_helper.push(if is_left_node {
